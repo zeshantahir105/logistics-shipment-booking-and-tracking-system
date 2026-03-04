@@ -23,14 +23,14 @@ A full-stack MERN application that enables shippers to search carrier services, 
 
 ## Tech Stack
 
-| Layer     | Technology                                           |
-|-----------|------------------------------------------------------|
-| Runtime   | Node.js 18+                                          |
-| Backend   | Express 4, TypeScript 5, Mongoose 8, Zod 3           |
-| Database  | MongoDB 7 (replica set — required for transactions)  |
-| Frontend  | React 18, TypeScript, Vite, React Router 6           |
-| Data fetching | React Query (@tanstack/react-query)             |
-| Containers | Docker, Docker Compose                              |
+| Layer         | Technology                                          |
+| ------------- | --------------------------------------------------- |
+| Runtime       | Node.js 18+                                         |
+| Backend       | Express 4, TypeScript 5, Mongoose 8, Zod 3          |
+| Database      | MongoDB 7 (replica set — required for transactions) |
+| Frontend      | React 18, TypeScript, Vite, React Router 6          |
+| Data fetching | React Query (@tanstack/react-query)                 |
+| Containers    | Docker, Docker Compose                              |
 
 ---
 
@@ -61,10 +61,12 @@ task/
 ### Service boundaries
 
 **Carrier Catalogue Service** (`src/modules/carriers/`)
+
 - Owns: `Carrier`, `CarrierService` collections
 - Responsibilities: carrier search, capacity limits, base pricing, transit days
 
 **Shipment Service** (`src/modules/shipments/`)
+
 - Owns: `Shipment`, `ShipmentLeg`, `ShipmentStatusHistory` collections
 - Responsibilities: lifecycle, leg management, capacity validation, submission, exceptions, audit history
 
@@ -75,80 +77,85 @@ task/
 ### Collections and schemas
 
 #### `carriers`
-| Field   | Type     | Constraints         |
-|---------|----------|---------------------|
-| `_id`   | ObjectId | PK                  |
-| `name`  | String   | required            |
-| `code`  | String   | required, unique    |
-| `modes` | String[] | enum: air/sea/road  |
+
+| Field   | Type     | Constraints        |
+| ------- | -------- | ------------------ |
+| `_id`   | ObjectId | PK                 |
+| `name`  | String   | required           |
+| `code`  | String   | required, unique   |
+| `modes` | String[] | enum: air/sea/road |
 
 #### `carrier_services`
-| Field            | Type     | Constraints                   |
-|------------------|----------|-------------------------------|
-| `_id`            | ObjectId | PK                            |
-| `carrierId`      | ObjectId | FK → carriers, required       |
+
+| Field            | Type     | Constraints                                          |
+| ---------------- | -------- | ---------------------------------------------------- |
+| `_id`            | ObjectId | PK                                                   |
+| `carrierId`      | ObjectId | FK → carriers, required                              |
 | `carrierGroupId` | String   | required — groups multi-leg routes under one carrier |
-| `mode`           | String   | enum: air/sea/road            |
-| `origin`         | String   | required                      |
-| `destination`    | String   | required                      |
-| `maxWeight`      | Number   | kg capacity                   |
-| `maxVolume`      | Number   | m³ capacity                   |
-| `basePrice`      | Number   | live pricing (snapshotted at booking) |
-| `currency`       | String   |                               |
-| `transitDays`    | Number   |                               |
-| `active`         | Boolean  | default true; filters search  |
+| `mode`           | String   | enum: air/sea/road                                   |
+| `origin`         | String   | required                                             |
+| `destination`    | String   | required                                             |
+| `maxWeight`      | Number   | kg capacity                                          |
+| `maxVolume`      | Number   | m³ capacity                                          |
+| `basePrice`      | Number   | live pricing (snapshotted at booking)                |
+| `currency`       | String   |                                                      |
+| `transitDays`    | Number   |                                                      |
+| `active`         | Boolean  | default true; filters search                         |
 
 Indexes: `{ origin, destination, mode }`, `{ carrierId }`
 
 #### `shipments`
-| Field                 | Type     | Constraints                      |
-|-----------------------|----------|----------------------------------|
-| `_id`                 | ObjectId | PK                               |
-| `shortId`             | String   | unique — human-readable draft ID (last 6 hex chars of ObjectId, uppercased) |
-| `shipmentNumber`      | String   | unique, sparse — generated at submission (`SHP-{timestamp}-{shortId}`) |
-| `shipper`             | Object   | `{ name, contactEmail }`         |
-| `pickupAddress`       | Object   | `{ line1, line2?, city, country }` |
-| `deliveryAddress`     | Object   | `{ line1, line2?, city, country }` |
-| `cargo`               | Object   | `{ type, weight, volume }`       |
-| `requiredDeliveryDate`| Date     | optional                         |
-| `carrierGroupId`      | String   | set when legs are added; enforces single-carrier rule |
-| `status`              | String   | enum: Draft/Booked/InTransit/Delivered/Closed/Exception |
-| `version`             | Number   | optimistic locking counter       |
-| `snapshot`            | Object   | immutable at submission: `{ totalPrice, currency, totalTransitDays, estimatedArrivalDate }` |
-| `idempotencyKey`      | String   | stores the Idempotency-Key used for submission |
+
+| Field                  | Type     | Constraints                                                                                 |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `_id`                  | ObjectId | PK                                                                                          |
+| `shortId`              | String   | unique — human-readable draft ID (last 6 hex chars of ObjectId, uppercased)                 |
+| `shipmentNumber`       | String   | unique, sparse — generated at submission (`SHP-{timestamp}-{shortId}`)                      |
+| `shipper`              | Object   | `{ name, contactEmail }`                                                                    |
+| `pickupAddress`        | Object   | `{ line1, line2?, city, country }`                                                          |
+| `deliveryAddress`      | Object   | `{ line1, line2?, city, country }`                                                          |
+| `cargo`                | Object   | `{ type, weight, volume }`                                                                  |
+| `requiredDeliveryDate` | Date     | optional                                                                                    |
+| `carrierGroupId`       | String   | set when legs are added; enforces single-carrier rule                                       |
+| `status`               | String   | enum: Draft/Booked/InTransit/Delivered/Closed/Exception                                     |
+| `version`              | Number   | optimistic locking counter                                                                  |
+| `snapshot`             | Object   | immutable at submission: `{ totalPrice, currency, totalTransitDays, estimatedArrivalDate }` |
+| `idempotencyKey`       | String   | stores the Idempotency-Key used for submission                                              |
 
 Indexes: `shortId` (unique), `shipmentNumber` (unique, sparse), `idempotencyKey` (sparse)
 
 #### `shipment_legs`
-| Field                | Type     | Constraints                      |
-|----------------------|----------|----------------------------------|
-| `_id`                | ObjectId | PK                               |
-| `shipmentId`         | ObjectId | FK → shipments                   |
-| `sequence`           | Number   | ordering within shipment         |
-| `carrierServiceId`   | ObjectId | FK → carrier_services            |
-| `mode`               | String   | snapshotted from service         |
-| `origin`             | String   | snapshotted from service         |
-| `destination`        | String   | snapshotted from service         |
-| `scheduledDeparture` | Date     |                                  |
-| `scheduledArrival`   | Date     |                                  |
-| `transitDays`        | Number   | snapshotted from service         |
-| `price`              | Number   | snapshotted from service at leg creation |
-| `currency`           | String   | snapshotted                      |
+
+| Field                | Type     | Constraints                                      |
+| -------------------- | -------- | ------------------------------------------------ |
+| `_id`                | ObjectId | PK                                               |
+| `shipmentId`         | ObjectId | FK → shipments                                   |
+| `sequence`           | Number   | ordering within shipment                         |
+| `carrierServiceId`   | ObjectId | FK → carrier_services                            |
+| `mode`               | String   | snapshotted from service                         |
+| `origin`             | String   | snapshotted from service                         |
+| `destination`        | String   | snapshotted from service                         |
+| `scheduledDeparture` | Date     |                                                  |
+| `scheduledArrival`   | Date     |                                                  |
+| `transitDays`        | Number   | snapshotted from service                         |
+| `price`              | Number   | snapshotted from service at leg creation         |
+| `currency`           | String   | snapshotted                                      |
 | `status`             | String   | enum: Draft/Booked/InTransit/Delivered/Exception |
-| `exception`          | Object   | `{ reasonCode, description?, resolvedAt? }` |
+| `exception`          | Object   | `{ reasonCode, description?, resolvedAt? }`      |
 
 Indexes: `{ shipmentId, sequence }` (unique), `{ carrierServiceId }`
 
 #### `shipment_status_history`
-| Field       | Type     | Constraints          |
-|-------------|----------|----------------------|
-| `_id`       | ObjectId | PK                   |
-| `shipmentId`| ObjectId | FK → shipments       |
-| `changedAt` | Date     | required             |
-| `fromStatus`| String   |                      |
-| `toStatus`  | String   | required             |
-| `reasonCode`| String   | exception reason     |
-| `note`      | String   |                      |
+
+| Field        | Type     | Constraints      |
+| ------------ | -------- | ---------------- |
+| `_id`        | ObjectId | PK               |
+| `shipmentId` | ObjectId | FK → shipments   |
+| `changedAt`  | Date     | required         |
+| `fromStatus` | String   |                  |
+| `toStatus`   | String   | required         |
+| `reasonCode` | String   | exception reason |
+| `note`       | String   |                  |
 
 Index: `{ shipmentId, changedAt }`
 
@@ -182,12 +189,15 @@ Draft → Booked → InTransit → Delivered → Closed
   - Otherwise → `Draft`
 
 ### Single carrier group
+
 All legs in a shipment must belong to the same `carrierGroupId`. Adding legs that mix groups returns **HTTP 409 Conflict**. The constraint is enforced in the service layer on every leg save operation.
 
 ### Capacity validation
+
 `cargo.weight` and `cargo.volume` are compared against the minimum of `maxWeight`/`maxVolume` across all selected carrier services. Exceeding either returns **HTTP 400** with structured details (`totalWeight`, `totalVolume`, `maxWeight`, `maxVolume`).
 
 ### Pricing snapshot
+
 While in `Draft`, the leg `price` reflects `CarrierService.basePrice` at the time the leg was last saved. On submission, `shipment.snapshot` is computed and frozen — it is never recomputed from live catalogue data thereafter, preserving historical integrity.
 
 ---
@@ -195,11 +205,13 @@ While in `Draft`, the leg `price` reflects `CarrierService.basePrice` at the tim
 ## Concurrency & Idempotency
 
 ### Optimistic locking (drafts)
+
 - `Shipment.version` is incremented on each draft update.
 - Update requests include the current `version`; the server does `findOne({ _id, status: 'Draft', version })`.
 - If the document has been modified concurrently, the query returns no result and a **409** is returned, prompting the client to refetch and retry.
 
 ### Idempotent submission
+
 - `POST /api/shipments/{id}/submit` requires an `Idempotency-Key` header (a UUID generated by the client and held stable across retries using `useRef`).
 - If a submitted shipment already has the same `idempotencyKey`, the existing booking is returned immediately — no duplicate is created.
 - The submit operation runs in a MongoDB transaction spanning `Shipment`, `ShipmentLeg` reads, and `ShipmentStatusHistory` write, ensuring all-or-nothing atomicity.
@@ -210,12 +222,12 @@ While in `Draft`, the leg `price` reflects `CarrierService.basePrice` at the tim
 
 Operations that touch multiple collections atomically use `mongoose.startSession()` + `session.startTransaction()`:
 
-| Operation               | Collections touched                              |
-|-------------------------|--------------------------------------------------|
-| Submit shipment         | Shipment (update) + ShipmentStatusHistory (insert) |
-| Update leg/ship status  | Shipment + ShipmentLeg + ShipmentStatusHistory   |
-| Create exception        | ShipmentLeg + Shipment + ShipmentStatusHistory   |
-| Resolve exception       | ShipmentLeg + Shipment + ShipmentStatusHistory   |
+| Operation              | Collections touched                                |
+| ---------------------- | -------------------------------------------------- |
+| Submit shipment        | Shipment (update) + ShipmentStatusHistory (insert) |
+| Update leg/ship status | Shipment + ShipmentLeg + ShipmentStatusHistory     |
+| Create exception       | ShipmentLeg + Shipment + ShipmentStatusHistory     |
+| Resolve exception      | ShipmentLeg + Shipment + ShipmentStatusHistory     |
 
 On any error the transaction is aborted; no partial writes are persisted. The API returns 4xx for client errors and 5xx for unexpected failures. All submission endpoints are safe to retry.
 
@@ -229,39 +241,40 @@ Full schema definitions are in `backend/openapi.yaml` (OpenAPI 3.1).
 
 ### Carrier Catalogue
 
-| Method | Path                        | Description                                                   |
-|--------|-----------------------------|---------------------------------------------------------------|
-| GET    | `/api/carriers/services`    | Search carrier services. Params: `q` (origin OR destination free-text), `origin`, `destination`, `mode`, `carrierId`, `sort` (price/transitTime), `page`, `pageSize`. All text params use case-insensitive regex. |
+| Method | Path                     | Description                                                                                                                                                                                                       |
+| ------ | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/carriers/services` | Search carrier services. Params: `q` (origin OR destination free-text), `origin`, `destination`, `mode`, `carrierId`, `sort` (price/transitTime), `page`, `pageSize`. All text params use case-insensitive regex. |
 
 ### Shipments
 
-| Method | Path                                          | Description                                                     |
-|--------|-----------------------------------------------|-----------------------------------------------------------------|
-| POST   | `/api/shipments/drafts`                       | Create a new shipment draft                                     |
-| GET    | `/api/shipments`                              | List shipments. Params: `status`, `shipmentNumber` (searches both `shipmentNumber` and `shortId` with regex) |
-| GET    | `/api/shipments/:id`                          | Get shipment detail with legs and timeline history              |
-| PATCH  | `/api/shipments/:id`                          | Update draft header (requires `version` for optimistic locking) |
-| POST   | `/api/shipments/:id/legs`                     | Add or replace legs (single carrier group + capacity enforced)  |
-| DELETE | `/api/shipments/:id/legs/:legId`              | Remove a leg from a draft                                       |
-| POST   | `/api/shipments/:id/submit`                   | Submit draft → Booked. Requires `Idempotency-Key` header        |
-| POST   | `/api/shipments/:id/status`                   | Transition leg or shipment status                               |
-| POST   | `/api/shipments/:id/exceptions`               | Record an exception on a leg (`reasonCode` required)            |
-| POST   | `/api/shipments/:id/exceptions/:legId/resolve`| Resolve an exception and resume transit                         |
+| Method | Path                                           | Description                                                                                                  |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| POST   | `/api/shipments/drafts`                        | Create a new shipment draft                                                                                  |
+| GET    | `/api/shipments`                               | List shipments. Params: `status`, `shipmentNumber` (searches both `shipmentNumber` and `shortId` with regex) |
+| GET    | `/api/shipments/:id`                           | Get shipment detail with legs and timeline history                                                           |
+| PATCH  | `/api/shipments/:id`                           | Update draft header (requires `version` for optimistic locking)                                              |
+| POST   | `/api/shipments/:id/legs`                      | Add or replace legs (single carrier group + capacity enforced)                                               |
+| DELETE | `/api/shipments/:id/legs/:legId`               | Remove a leg from a draft                                                                                    |
+| POST   | `/api/shipments/:id/submit`                    | Submit draft → Booked. Requires `Idempotency-Key` header                                                     |
+| POST   | `/api/shipments/:id/status`                    | Transition leg or shipment status                                                                            |
+| POST   | `/api/shipments/:id/exceptions`                | Record an exception on a leg (`reasonCode` required)                                                         |
+| POST   | `/api/shipments/:id/exceptions/:legId/resolve` | Resolve an exception and resume transit                                                                      |
 
 ### Error responses
 
-| Status | Meaning                                         |
-|--------|-------------------------------------------------|
-| 400    | Validation error — Zod field-level details returned |
-| 404    | Resource not found                              |
+| Status | Meaning                                                                        |
+| ------ | ------------------------------------------------------------------------------ |
+| 400    | Validation error — Zod field-level details returned                            |
+| 404    | Resource not found                                                             |
 | 409    | Business rule conflict (carrier mismatch, version conflict, already submitted) |
-| 500    | Unexpected server error                         |
+| 500    | Unexpected server error                                                        |
 
 ---
 
 ## Frontend Workflows
 
 ### Carrier search (`/`)
+
 - Search by origin, destination, transport mode, and sort order.
 - All text inputs are debounced (400 ms) to avoid excessive API calls.
 - The `q` parameter matches both origin and destination, so typing "Dubai" surfaces services departing from or arriving in Dubai.
@@ -271,11 +284,13 @@ Full schema definitions are in `backend/openapi.yaml` (OpenAPI 3.1).
 ### Booking flow
 
 **Step 1 — Draft (`/shipments/new`)**
+
 - Collects shipper name, contact email, pickup/delivery addresses, cargo type, weight, volume, and optional required delivery date.
 - Full client-side + server-side validation with field-level error messages.
 - Creates a draft via `POST /api/shipments/drafts` and redirects to the detail page.
 
 **Step 2 — Add legs (`/shipments/:id`)**
+
 - Available when status is `Draft`.
 - Inline `LegEditor` component:
   - Free-text search for carrier services (by origin or destination, debounced).
@@ -289,6 +304,7 @@ Full schema definitions are in `backend/openapi.yaml` (OpenAPI 3.1).
   - All legs must share the same `carrierGroupId`; the backend enforces this with a 409 on violation.
 
 **Step 3 — Review & submit (`/shipments/:id/review`)**
+
 - Displays snapshotted pricing and route summary.
 - Submit button calls `POST /api/shipments/:id/submit` with a stable `Idempotency-Key` (generated once per review session via `useRef`, surviving re-renders and retries).
 - On success, redirects to the tracking detail view.
@@ -296,11 +312,13 @@ Full schema definitions are in `backend/openapi.yaml` (OpenAPI 3.1).
 ### Tracking
 
 **List view (`/shipments`)**
+
 - Lists all shipments with status filter and shipment number search.
 - Search works against both formal `shipmentNumber` and `shortId` (draft identifier), so shipments are findable at any lifecycle stage.
 - Status badges, route summary, and last-updated time are shown per row.
 
 **Detail view (`/shipments/:id`)**
+
 - Header card: shipper info, cargo, addresses, status badge.
 - Snapshot panel (visible after booking): locked-in total price, transit days, ETA.
 - Legs table: route, mode, departure/arrival, per-leg status badge.
@@ -311,6 +329,7 @@ Full schema definitions are in `backend/openapi.yaml` (OpenAPI 3.1).
 ## Running the System
 
 ### Prerequisites
+
 - Docker Desktop (recommended) — or a local MongoDB 7 replica set
 - Node.js 18+
 
@@ -352,27 +371,27 @@ The seed script (`npm run seed` from `backend/`) is idempotent — safe to run m
 
 **Backend** (`cd backend`):
 
-| Script          | Description                                      |
-|-----------------|--------------------------------------------------|
-| `npm run dev`   | Start dev server with hot-reload (ts-node-dev)   |
-| `npm run build` | Compile TypeScript to `dist/`                    |
-| `npm run start` | Run compiled build (`dist/server.js`)            |
-| `npm run seed`  | Populate MongoDB with carrier data (idempotent)  |
+| Script          | Description                                     |
+| --------------- | ----------------------------------------------- |
+| `npm run dev`   | Start dev server with hot-reload (ts-node-dev)  |
+| `npm run build` | Compile TypeScript to `dist/`                   |
+| `npm run start` | Run compiled build (`dist/server.js`)           |
+| `npm run seed`  | Populate MongoDB with carrier data (idempotent) |
 
 **Frontend** (`cd frontend`):
 
-| Script          | Description                       |
-|-----------------|-----------------------------------|
+| Script          | Description                        |
+| --------------- | ---------------------------------- |
 | `npm run dev`   | Start Vite dev server on port 5173 |
-| `npm run build` | Production bundle to `dist/`      |
+| `npm run build` | Production bundle to `dist/`       |
 
 **Root** (`cd task`):
 
-| Script               | Description                          |
-|----------------------|--------------------------------------|
-| `npm run docker:up`  | `docker compose up -d`               |
-| `npm run docker:down`| `docker compose down`                |
-| `npm run docker:logs`| Tail container logs                  |
+| Script                | Description            |
+| --------------------- | ---------------------- |
+| `npm run docker:up`   | `docker compose up -d` |
+| `npm run docker:down` | `docker compose down`  |
+| `npm run docker:logs` | Tail container logs    |
 
 ---
 

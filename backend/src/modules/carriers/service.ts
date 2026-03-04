@@ -1,5 +1,5 @@
 import type { FilterQuery } from 'mongoose';
-import { CarrierService, type CarrierServiceDoc, type TransportMode } from './models';
+import { Carrier, CarrierService, type CarrierServiceDoc, type TransportMode } from './models';
 
 export interface CarrierServiceSearchParams {
   q?: string;           // free-text: matches origin OR destination
@@ -12,9 +12,13 @@ export interface CarrierServiceSearchParams {
   pageSize?: number;
 }
 
+export async function listCarriersInCatalogue() {
+  return Carrier.find().sort({ name: 1 });
+}
+
 export async function searchCarrierServicesInCatalogue(
   params: CarrierServiceSearchParams
-): Promise<{ results: CarrierServiceDoc[]; total: number }> {
+): Promise<{ results: (CarrierServiceDoc & { carrierName?: string })[]; total: number }> {
   const {
     q,
     origin,
@@ -28,7 +32,6 @@ export async function searchCarrierServicesInCatalogue(
 
   const filter: FilterQuery<CarrierServiceDoc> = { active: true };
 
-  // Free-text search across origin + destination
   if (q) {
     const re = { $regex: q.trim(), $options: 'i' };
     filter.$or = [{ origin: re }, { destination: re }];
@@ -39,18 +42,41 @@ export async function searchCarrierServicesInCatalogue(
   if (mode) filter.mode = mode;
   if (carrierId) filter.carrierId = carrierId;
 
-  const sortSpec: Record<string, 1 | -1> = {};
-  if (sort === 'price') sortSpec.basePrice = 1;
-  if (sort === 'transitTime') sortSpec.transitDays = 1;
-  // carrierName sort would require populate + sort, kept simple here
+  const total = await CarrierService.countDocuments(filter);
+
+  // Populate carrier name for display and carrier-name sorting
+  const sortSpec: Record<string, 1 | -1> =
+    sort === 'price' ? { basePrice: 1 } :
+    sort === 'transitTime' ? { transitDays: 1 } :
+    {};
 
   const skip = (page - 1) * pageSize;
 
-  const [results, total] = await Promise.all([
-    CarrierService.find(filter).sort(sortSpec).skip(skip).limit(pageSize).exec(),
-    CarrierService.countDocuments(filter),
-  ]);
+  let query = CarrierService.find(filter)
+    .populate<{ carrierId: { _id: unknown; name: string } }>('carrierId', 'name')
+    .lean();
 
-  return { results, total };
+  if (sort !== 'carrierName') {
+    query = (query as any).sort(sortSpec).skip(skip).limit(pageSize);
+  }
+
+  const docs = await query.exec();
+
+  // Flatten: map _id → id (string) to match global toJSON transform,
+  // attach carrierName, and unwrap the populated carrierId back to its ObjectId.
+  let results = docs.map((doc: any) => ({
+    ...doc,
+    id: doc._id?.toString(),
+    carrierId: doc.carrierId?._id?.toString() ?? doc.carrierId?.toString(),
+    carrierName: doc.carrierId?.name ?? '',
+  }));
+
+  // Carrier-name sort must happen after populate (in-memory, dataset is small)
+  if (sort === 'carrierName') {
+    results = results
+      .sort((a: any, b: any) => (a.carrierName as string).localeCompare(b.carrierName as string))
+      .slice(skip, skip + pageSize);
+  }
+
+  return { results: results as any, total };
 }
-

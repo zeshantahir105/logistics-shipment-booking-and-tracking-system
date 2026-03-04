@@ -1,7 +1,16 @@
 import { api } from './client';
 
+export interface Carrier {
+  id: string;
+  name: string;
+  code: string;
+  modes: ('air' | 'sea' | 'road')[];
+}
+
 export interface CarrierService {
   id: string;
+  carrierId: string;
+  carrierName: string;
   carrierGroupId: string;
   mode: 'air' | 'sea' | 'road';
   origin: string;
@@ -14,7 +23,7 @@ export interface CarrierService {
 }
 
 export interface CarrierSearchParams {
-  q?: string;           // free-text: matches origin OR destination
+  q?: string;
   origin?: string;
   destination?: string;
   mode?: string;
@@ -24,10 +33,14 @@ export interface CarrierSearchParams {
   pageSize?: number;
 }
 
+export async function listCarriers() {
+  const res = await api.get<{ data: Carrier[] }>('/carriers');
+  return res.data;
+}
+
 export async function searchCarrierServices(params: CarrierSearchParams) {
   const res = await api.get<{ data: CarrierService[]; total: number }>('/carriers/services', {
     params,
   });
   return res.data;
 }
-

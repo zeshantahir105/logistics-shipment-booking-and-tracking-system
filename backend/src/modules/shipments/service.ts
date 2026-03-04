@@ -322,6 +322,17 @@ export async function submitShipmentService(
 
     await shipment.save({ session });
 
+    // Advance all legs from Draft → Booked so the tracking view can
+    // progress them through the lifecycle (InTransit → Delivered).
+    await ShipmentLeg.updateMany(
+      { shipmentId: shipment._id, status: 'Draft' },
+      { $set: { status: 'Booked' } },
+      { session }
+    );
+
+    // Re-fetch legs with updated statuses to return to the caller
+    const bookedLegs = await ShipmentLeg.find({ shipmentId: shipment._id }).session(session);
+
     await ShipmentStatusHistory.create(
       [
         {
@@ -338,7 +349,7 @@ export async function submitShipmentService(
     await session.commitTransaction();
     session.endSession();
 
-    return { shipment, legs };
+    return { shipment, legs: bookedLegs };
   } catch (err) {
     await session.abortTransaction();
     session.endSession();

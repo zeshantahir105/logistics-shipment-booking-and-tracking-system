@@ -74,5 +74,39 @@ export interface ShipmentLeg {
   price: number;
   currency: string;
   status: string;
+  exception?: {
+    reasonCode: string;
+    description?: string;
+    resolvedAt?: string;
+  } | null;
+}
+
+export async function updateLegStatus(shipmentId: string, legId: string, status: string) {
+  const res = await api.post(`/shipments/${shipmentId}/status`, { legId, status });
+  return res.data as { shipment: Shipment; legs: ShipmentLeg[] };
+}
+
+export async function closeShipment(shipmentId: string) {
+  const res = await api.post(`/shipments/${shipmentId}/status`, { status: 'Closed' });
+  return res.data as { shipment: Shipment; legs: ShipmentLeg[] };
+}
+
+export async function createException(
+  shipmentId: string,
+  legId: string,
+  reasonCode: string,
+  description?: string
+) {
+  const res = await api.post(`/shipments/${shipmentId}/exceptions`, {
+    legId,
+    reasonCode,
+    description,
+  });
+  return res.data as { shipment: Shipment; leg: ShipmentLeg };
+}
+
+export async function resolveException(shipmentId: string, legId: string) {
+  const res = await api.post(`/shipments/${shipmentId}/exceptions/${legId}/resolve`, {});
+  return res.data as { shipment: Shipment; leg: ShipmentLeg };
 }
 

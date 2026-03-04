@@ -183,6 +183,26 @@ export function ShipmentDraftPage() {
                 }
                 error={err('cargo.volume')}
               />
+              <div className="field">
+                <label htmlFor="required-delivery-date">Required delivery date (optional)</label>
+                <input
+                  id="required-delivery-date"
+                  type="date"
+                  value={
+                    form.requiredDeliveryDate
+                      ? form.requiredDeliveryDate.slice(0, 10)
+                      : ''
+                  }
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      requiredDeliveryDate: e.target.value
+                        ? new Date(e.target.value).toISOString()
+                        : null,
+                    }))
+                  }
+                />
+              </div>
             </div>
           </div>
 

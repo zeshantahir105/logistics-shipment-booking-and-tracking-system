@@ -1,5 +1,14 @@
 import type { Request, Response, NextFunction } from 'express';
-import { searchCarrierServicesInCatalogue } from './service';
+import { listCarriersInCatalogue, searchCarrierServicesInCatalogue } from './service';
+
+export async function listCarriers(req: Request, res: Response, next: NextFunction) {
+  try {
+    const carriers = await listCarriersInCatalogue();
+    res.json({ data: carriers });
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function searchCarrierServices(req: Request, res: Response, next: NextFunction) {
   try {
@@ -16,12 +25,8 @@ export async function searchCarrierServices(req: Request, res: Response, next: N
       pageSize: pageSize ? Number(pageSize) : undefined,
     });
 
-    res.json({
-      data: results,
-      total,
-    });
+    res.json({ data: results, total });
   } catch (err) {
     next(err);
   }
 }
-

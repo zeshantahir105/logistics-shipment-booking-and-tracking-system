@@ -2,7 +2,12 @@ import { useState, FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { saveLegs, deleteLeg, type LegInput, type ShipmentLeg } from '../api/shipments';
+import {
+  saveLegs, deleteLeg,
+  updateLegStatus, closeShipment,
+  createException, resolveException,
+  type LegInput, type ShipmentLeg,
+} from '../api/shipments';
 import { searchCarrierServices, type CarrierService } from '../api/carriers';
 import { getApiErrorMessage } from '../api/client';
 import { useDebounce } from '../hooks/useDebounce';
@@ -312,6 +317,236 @@ function LegEditor({
   );
 }
 
+// ── Active legs panel (Booked / InTransit / Exception / Delivered) ────────────
+
+function ActiveLegsPanel({
+  shipmentId,
+  shipmentStatus,
+  legs,
+  onUpdated,
+}: {
+  shipmentId: string;
+  shipmentStatus?: string;
+  legs: ShipmentLeg[];
+  onUpdated: () => void;
+}) {
+  const [exceptionLegId, setExceptionLegId] = useState<string | null>(null);
+  const [reasonCode, setReasonCode] = useState('');
+  const [description, setDescription] = useState('');
+  const [panelError, setPanelError] = useState('');
+
+  const advanceMutation = useMutation({
+    mutationFn: ({ legId, status }: { legId: string; status: string }) =>
+      updateLegStatus(shipmentId, legId, status),
+    onSuccess: () => { setPanelError(''); onUpdated(); },
+    onError: (err) => setPanelError(getApiErrorMessage(err)),
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: () => closeShipment(shipmentId),
+    onSuccess: () => { setPanelError(''); onUpdated(); },
+    onError: (err) => setPanelError(getApiErrorMessage(err)),
+  });
+
+  const exceptionMutation = useMutation({
+    mutationFn: ({ legId, reasonCode, description }: { legId: string; reasonCode: string; description: string }) =>
+      createException(shipmentId, legId, reasonCode, description),
+    onSuccess: () => {
+      setExceptionLegId(null);
+      setReasonCode('');
+      setDescription('');
+      setPanelError('');
+      onUpdated();
+    },
+    onError: (err) => setPanelError(getApiErrorMessage(err)),
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (legId: string) => resolveException(shipmentId, legId),
+    onSuccess: () => { setPanelError(''); onUpdated(); },
+    onError: (err) => setPanelError(getApiErrorMessage(err)),
+  });
+
+  const allDelivered = legs.length > 0 && legs.every((l) => l.status === 'Delivered');
+  const canClose = allDelivered && shipmentStatus !== 'Closed';
+
+  return (
+    <div className="stack">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Route</th>
+            <th>Mode</th>
+            <th>Departure</th>
+            <th>Arrival</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {legs.map((leg) => (
+            <tr key={leg.id}>
+              <td>{leg.sequence}</td>
+              <td>{leg.origin} → {leg.destination}</td>
+              <td style={{ textTransform: 'capitalize' }}>{leg.mode}</td>
+              <td>{new Date(leg.scheduledDeparture).toLocaleString()}</td>
+              <td>{new Date(leg.scheduledArrival).toLocaleString()}</td>
+              <td>
+                <span className={`badge badge-status-${(leg.status ?? 'draft').toLowerCase()}`}>
+                  {leg.status === 'InTransit' ? 'In Transit' : leg.status}
+                </span>
+                {leg.exception && !leg.exception.resolvedAt && (
+                  <div style={{ fontSize: '0.7rem', color: '#f87171', marginTop: '0.15rem' }}>
+                    {leg.exception.reasonCode}
+                    {leg.exception.description && ` — ${leg.exception.description}`}
+                  </div>
+                )}
+              </td>
+              <td>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  {leg.status === 'Booked' && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}
+                      disabled={advanceMutation.isPending}
+                      onClick={() => advanceMutation.mutate({ legId: leg.id, status: 'InTransit' })}
+                    >
+                      Start transit
+                    </button>
+                  )}
+                  {leg.status === 'InTransit' && (
+                    <>
+                      <button
+                        className="btn"
+                        style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}
+                        disabled={advanceMutation.isPending}
+                        onClick={() => advanceMutation.mutate({ legId: leg.id, status: 'Delivered' })}
+                      >
+                        Delivered
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', color: '#f87171' }}
+                        onClick={() => { setExceptionLegId(leg.id); setPanelError(''); }}
+                      >
+                        Flag exception
+                      </button>
+                    </>
+                  )}
+                  {leg.status === 'Exception' && !leg.exception?.resolvedAt && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}
+                      disabled={resolveMutation.isPending}
+                      onClick={() => resolveMutation.mutate(leg.id)}
+                    >
+                      Resolve exception
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {legs.length === 0 && (
+        <div className="muted" style={{ padding: '0.5rem 0' }}>No legs recorded.</div>
+      )}
+
+      {/* Close shipment */}
+      {canClose && (
+        <div style={{ paddingTop: '0.5rem', borderTop: '1px solid rgba(148,163,184,0.2)' }}>
+          <button
+            className="btn"
+            disabled={closeMutation.isPending}
+            onClick={() => closeMutation.mutate()}
+          >
+            {closeMutation.isPending ? 'Closing...' : 'Close shipment'}
+          </button>
+          <span className="muted" style={{ marginLeft: '0.75rem', fontSize: '0.8rem' }}>
+            All legs delivered — close to finalise.
+          </span>
+        </div>
+      )}
+
+      {/* Exception form */}
+      {exceptionLegId && (
+        <div
+          style={{
+            padding: '0.75rem',
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: '0.5rem',
+          }}
+        >
+          <div style={{ marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.85rem' }}>
+            Flag exception on leg
+          </div>
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="exc-reason">Reason code <span style={{ color: '#f87171' }}>*</span></label>
+              <input
+                id="exc-reason"
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value)}
+                placeholder="e.g. CUSTOMS_HOLD"
+                autoComplete="off"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="exc-description">Description (optional)</label>
+              <input
+                id="exc-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Additional details..."
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <button
+              className="btn"
+              style={{ background: '#ef4444' }}
+              disabled={exceptionMutation.isPending || !reasonCode.trim()}
+              onClick={() =>
+                exceptionMutation.mutate({ legId: exceptionLegId, reasonCode, description })
+              }
+            >
+              {exceptionMutation.isPending ? 'Saving...' : 'Submit exception'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => { setExceptionLegId(null); setReasonCode(''); setDescription(''); }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {panelError && (
+        <div
+          className="error-text"
+          role="alert"
+          style={{
+            padding: '0.6rem 0.75rem',
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.4)',
+            borderRadius: '0.4rem',
+          }}
+        >
+          {panelError}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
+
 export function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
@@ -394,6 +629,12 @@ export function ShipmentDetailPage() {
                 <div className="muted">Delivery</div>
                 <div>{shipment.deliveryAddress.city}, {shipment.deliveryAddress.country}</div>
               </div>
+              {shipment.requiredDeliveryDate && (
+                <div>
+                  <div className="muted">Required by</div>
+                  <div>{new Date(shipment.requiredDeliveryDate).toLocaleDateString()}</div>
+                </div>
+              )}
             </div>
 
             {shipment.snapshot && (
@@ -442,39 +683,12 @@ export function ShipmentDetailPage() {
             onSaved={refreshDetail}
           />
         ) : (
-          <>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Route</th>
-                  <th>Mode</th>
-                  <th>Departure</th>
-                  <th>Arrival</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {legs.map((leg) => (
-                  <tr key={leg.id}>
-                    <td>{leg.sequence}</td>
-                    <td>{leg.origin} → {leg.destination}</td>
-                    <td style={{ textTransform: 'capitalize' }}>{leg.mode}</td>
-                    <td>{new Date(leg.scheduledDeparture).toLocaleString()}</td>
-                    <td>{new Date(leg.scheduledArrival).toLocaleString()}</td>
-                    <td>
-                      <span className={`badge badge-status-${(leg.status ?? 'Draft').toLowerCase()}`}>
-                        {leg.status === 'InTransit' ? 'In Transit' : leg.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {legs.length === 0 && (
-              <div className="muted" style={{ padding: '0.5rem 0' }}>No legs recorded.</div>
-            )}
-          </>
+          <ActiveLegsPanel
+            shipmentId={id}
+            shipmentStatus={shipment?.status}
+            legs={legs}
+            onUpdated={refreshDetail}
+          />
         )}
       </div>
 

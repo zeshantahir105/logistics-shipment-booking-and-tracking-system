@@ -4,8 +4,9 @@
   "description": "Logistics Shipment Booking & Tracking System - Backend (MERN)",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "start": "node dist/src/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "seed": "ts-node-dev --transpile-only src/seed.ts",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",

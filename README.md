@@ -371,12 +371,13 @@ The seed script (`npm run seed` from `backend/`) is idempotent — safe to run m
 
 **Backend** (`cd backend`):
 
-| Script          | Description                                     |
-| --------------- | ----------------------------------------------- |
-| `npm run dev`   | Start dev server with hot-reload (ts-node-dev)  |
-| `npm run build` | Compile TypeScript to `dist/`                   |
-| `npm run start` | Run compiled build (`dist/server.js`)           |
-| `npm run seed`  | Populate MongoDB with carrier data (idempotent) |
+| Script           | Description                                          |
+| ---------------- | ---------------------------------------------------- |
+| `npm run dev`    | Start dev server with hot-reload (ts-node-dev)       |
+| `npm run build`  | Clean `dist/` and compile TypeScript                 |
+| `npm run start`  | Run compiled build (`dist/src/server.js`)            |
+| `npm run seed`   | Populate MongoDB with carrier data (idempotent)      |
+| `npm run clean`  | Delete the `dist/` folder                            |
 
 **Frontend** (`cd frontend`):
 
@@ -418,6 +419,98 @@ NODE_ENV=development
 # Set this for production deployments pointing to a remote API
 VITE_API_URL=
 ```
+
+---
+
+## Deploying to Vercel
+
+Both the backend and frontend are Vercel-ready. They are deployed as **two separate Vercel projects** that talk to each other via environment variables.
+
+### Prerequisites
+
+1. A [MongoDB Atlas](https://cloud.mongodb.com) account with a free M0 cluster.
+   - Atlas clusters include a built-in replica set, so multi-document transactions work out of the box.
+   - Under **Network Access**, add `0.0.0.0/0` (allow from anywhere) so Vercel's dynamic IPs can connect.
+2. [Vercel CLI](https://vercel.com/docs/cli) installed globally: `npm i -g vercel`
+
+---
+
+### Step 1 — Deploy the backend
+
+```bash
+cd backend
+vercel
+```
+
+When prompted:
+- **Set up and deploy**: Yes
+- **Which scope**: your account
+- **Link to existing project**: No → give it a name, e.g. `logistics-api`
+- **In which directory is your code located?**: `.` (current directory)
+
+Vercel detects `vercel.json` and uses `api/index.ts` as the entry point automatically.
+
+After the first deploy, set the required **environment variables** in the Vercel dashboard (Project → Settings → Environment Variables):
+
+| Variable      | Value                                                                                     |
+|---------------|-------------------------------------------------------------------------------------------|
+| `MONGO_URI`   | Your Atlas connection string: `mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/logistics?retryWrites=true&w=majority` |
+| `CORS_ORIGIN` | Your frontend Vercel URL (set after frontend is deployed), e.g. `https://logistics-ui.vercel.app` |
+| `NODE_ENV`    | `production`                                                                              |
+
+Then redeploy to pick up the env vars:
+
+```bash
+vercel --prod
+```
+
+Note the backend URL — you'll need it in the next step (e.g. `https://logistics-api.vercel.app`).
+
+#### Seed carrier data on Atlas
+
+After the backend is live, run the seed script once pointing at Atlas:
+
+```bash
+cd backend
+MONGO_URI="mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/logistics?retryWrites=true&w=majority" npm run seed
+```
+
+---
+
+### Step 2 — Deploy the frontend
+
+```bash
+cd frontend
+vercel
+```
+
+Set the environment variable in the Vercel dashboard:
+
+| Variable       | Value                                           |
+|----------------|-------------------------------------------------|
+| `VITE_API_URL` | Your backend Vercel URL, e.g. `https://logistics-api.vercel.app` |
+
+Then deploy to production:
+
+```bash
+vercel --prod
+```
+
+`frontend/vercel.json` contains a catch-all rewrite rule (`/* → /index.html`) so React Router client-side navigation works correctly on direct URL access and page refresh.
+
+---
+
+### How it connects in production
+
+```
+Browser
+  └─► https://logistics-ui.vercel.app          (frontend Vercel project)
+        └─► fetch /api/...
+              └─► https://logistics-api.vercel.app/api/...  (backend Vercel project)
+                    └─► MongoDB Atlas
+```
+
+The frontend's `VITE_API_URL` is baked in at build time by Vite. All `/api` calls are sent directly to the backend URL. The backend's `CORS_ORIGIN` must match the frontend URL exactly to allow cross-origin requests.
 
 ---
 

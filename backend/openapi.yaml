@@ -1,0 +1,598 @@
+openapi: 3.1.0
+info:
+  title: Logistics Shipment Booking & Tracking API
+  version: 1.0.0
+servers:
+  - url: /api
+
+paths:
+  /carriers/services:
+    get:
+      summary: Search carrier services
+      parameters:
+        - in: query
+          name: origin
+          schema:
+            type: string
+        - in: query
+          name: destination
+          schema:
+            type: string
+        - in: query
+          name: mode
+          schema:
+            type: string
+            enum: [air, sea, road]
+        - in: query
+          name: carrierId
+          schema:
+            type: string
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [price, transitTime, carrierName]
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Carrier services search result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CarrierService'
+                  total:
+                    type: integer
+
+  /shipments/drafts:
+    post:
+      summary: Create shipment draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentDraftInput'
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+
+  /shipments:
+    get:
+      summary: List shipments
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/ShipmentStatus'
+        - in: query
+          name: shipmentNumber
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of shipments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Shipment'
+                  total:
+                    type: integer
+
+  /shipments/{id}:
+    get:
+      summary: Get shipment detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Shipment with legs and history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shipment:
+                    $ref: '#/components/schemas/Shipment'
+                  legs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShipmentLeg'
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShipmentStatusHistory'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update shipment draft header
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ShipmentDraftInput'
+                - type: object
+                  properties:
+                    version:
+                      type: integer
+      responses:
+        '200':
+          description: Updated draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /shipments/{id}/legs:
+    post:
+      summary: Add or update shipment legs
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                legs:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ShipmentLegInput'
+      responses:
+        '200':
+          description: Current legs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShipmentLeg'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /shipments/{id}/legs/{legId}:
+    delete:
+      summary: Delete a leg from a draft
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: legId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Remaining legs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShipmentLeg'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /shipments/{id}/submit:
+    post:
+      summary: Submit shipment (idempotent)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Submitted shipment with snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shipment:
+                    $ref: '#/components/schemas/Shipment'
+                  legs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShipmentLeg'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /shipments/{id}/status:
+    post:
+      summary: Update shipment or leg status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                legId:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/ShipmentStatus'
+      responses:
+        '200':
+          description: Updated shipment and legs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shipment:
+                    $ref: '#/components/schemas/Shipment'
+                  legs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShipmentLeg'
+
+  /shipments/{id}/exceptions:
+    post:
+      summary: Create exception on a leg
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                legId:
+                  type: string
+                reasonCode:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Shipment and leg after exception
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shipment:
+                    $ref: '#/components/schemas/Shipment'
+                  leg:
+                    $ref: '#/components/schemas/ShipmentLeg'
+
+  /shipments/{id}/exceptions/{exceptionId}/resolve:
+    post:
+      summary: Resolve an exception on a leg
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: exceptionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Shipment and leg after resolution
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shipment:
+                    $ref: '#/components/schemas/Shipment'
+                  leg:
+                    $ref: '#/components/schemas/ShipmentLeg'
+
+components:
+  schemas:
+    ShipmentStatus:
+      type: string
+      enum: [Draft, Booked, InTransit, Delivered, Closed, Exception]
+
+    Address:
+      type: object
+      properties:
+        line1:
+          type: string
+        line2:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+
+    Shipper:
+      type: object
+      properties:
+        name:
+          type: string
+        contactEmail:
+          type: string
+
+    Cargo:
+      type: object
+      properties:
+        type:
+          type: string
+        weight:
+          type: number
+        volume:
+          type: number
+
+    ShipmentSnapshot:
+      type: object
+      properties:
+        totalPrice:
+          type: number
+        currency:
+          type: string
+        totalTransitDays:
+          type: integer
+        estimatedArrivalDate:
+          type: string
+          format: date-time
+          nullable: true
+
+    ShipmentDraftInput:
+      type: object
+      properties:
+        shipper:
+          $ref: '#/components/schemas/Shipper'
+        pickupAddress:
+          $ref: '#/components/schemas/Address'
+        deliveryAddress:
+          $ref: '#/components/schemas/Address'
+        cargo:
+          $ref: '#/components/schemas/Cargo'
+        requiredDeliveryDate:
+          type: string
+          format: date-time
+          nullable: true
+      required: [shipper, pickupAddress, deliveryAddress, cargo]
+
+    Shipment:
+      type: object
+      properties:
+        id:
+          type: string
+        shipmentNumber:
+          type: string
+          nullable: true
+        shipper:
+          $ref: '#/components/schemas/Shipper'
+        pickupAddress:
+          $ref: '#/components/schemas/Address'
+        deliveryAddress:
+          $ref: '#/components/schemas/Address'
+        cargo:
+          $ref: '#/components/schemas/Cargo'
+        requiredDeliveryDate:
+          type: string
+          format: date-time
+          nullable: true
+        carrierGroupId:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ShipmentStatus'
+        version:
+          type: integer
+        snapshot:
+          $ref: '#/components/schemas/ShipmentSnapshot'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CarrierService:
+      type: object
+      properties:
+        id:
+          type: string
+        carrierId:
+          type: string
+        carrierGroupId:
+          type: string
+        mode:
+          type: string
+          enum: [air, sea, road]
+        origin:
+          type: string
+        destination:
+          type: string
+        maxWeight:
+          type: number
+        maxVolume:
+          type: number
+        basePrice:
+          type: number
+        currency:
+          type: string
+        transitDays:
+          type: integer
+
+    ShipmentLegInput:
+      type: object
+      properties:
+        id:
+          type: string
+        sequence:
+          type: integer
+        carrierServiceId:
+          type: string
+        scheduledDeparture:
+          type: string
+          format: date-time
+        scheduledArrival:
+          type: string
+          format: date-time
+
+    ShipmentLeg:
+      type: object
+      properties:
+        id:
+          type: string
+        shipmentId:
+          type: string
+        sequence:
+          type: integer
+        carrierServiceId:
+          type: string
+        mode:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        scheduledDeparture:
+          type: string
+          format: date-time
+        scheduledArrival:
+          type: string
+          format: date-time
+        transitDays:
+          type: integer
+        price:
+          type: number
+        currency:
+          type: string
+        status:
+          $ref: '#/components/schemas/ShipmentStatus'
+
+    ShipmentStatusHistory:
+      type: object
+      properties:
+        id:
+          type: string
+        shipmentId:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+        fromStatus:
+          $ref: '#/components/schemas/ShipmentStatus'
+        toStatus:
+          $ref: '#/components/schemas/ShipmentStatus'
+        reasonCode:
+          type: string
+        note:
+          type: string
+        changedBy:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+              message:
+                type: string
+              details:
+                type: object
+    Conflict:
+      description: Conflict (carrier group, lifecycle, or optimistic lock)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+              message:
+                type: string
+              details:
+                type: object
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+              message:
+                type: string
+

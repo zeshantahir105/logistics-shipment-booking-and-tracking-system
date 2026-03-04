@@ -1,0 +1,13 @@
+{
+  "name": "logistics-task",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Logistics Shipment Booking & Tracking System (MERN)",
+  "scripts": {
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:build": "docker compose build",
+    "docker:restart": "docker compose down && docker compose up -d"
+  }
+}
